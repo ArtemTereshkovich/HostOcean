@@ -12,6 +12,11 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Serilog;
+using Serilog.Exceptions;
+using Serilog.Sinks.Elasticsearch;
+using System;
 using System.Collections.Generic;
 
 namespace HostOcean.Api
@@ -22,6 +27,16 @@ namespace HostOcean.Api
         {
             Configuration = configuration;
             HostingEnvironment = hostingEnvironment;
+
+            Log.Logger = new LoggerConfiguration()
+                .Enrich.FromLogContext()
+                .Enrich.WithExceptionDetails()
+                .MinimumLevel.Debug()
+                .WriteTo.Elasticsearch(new ElasticsearchSinkOptions(new Uri(Configuration["ElasticsearchConfiguration:Uri"]))
+                {
+                    AutoRegisterTemplate = true
+                })
+                .CreateLogger();
         }
 
         private IHostingEnvironment HostingEnvironment { get; }
@@ -29,6 +44,8 @@ namespace HostOcean.Api
 
         public void ConfigureServices(IServiceCollection services)
         {
+            services.AddLogging(loggingBuilder => loggingBuilder.AddSerilog(dispose: true));
+
             services
                 .RegisterHangfire(Configuration)
                 .RegisterMvc()
@@ -56,8 +73,10 @@ namespace HostOcean.Api
         }
 
 
-        public void Configure(IApplicationBuilder app, IHostingEnvironment env)
+        public void Configure(IApplicationBuilder app, IHostingEnvironment env, ILoggerFactory loggerFactory)
         {
+            loggerFactory.AddSerilog();
+
             app.UseHangfireServer();
             app.UseHangfireDashboard(Configuration["HangfireSettings:HangfirePath"], new DashboardOptions()
             {
